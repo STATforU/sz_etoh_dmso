@@ -1,0 +1,352 @@
+---
+title: "Acrosome integrity"
+author: "Marie Bisconti, Philippe Grosjean & Elise Hennebert"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+The effect of DMSO and ethanol is evaluated at concentrations from 0 up to 2% on acrosome integrity of spermatozoa.
+
+```{r setup, include=FALSE}
+library(lme4)
+library(ggplot2)
+theme_set(theme_bw())
+# Also using readxl, skimr, equatiomatic, optimix, dfoptim, boot
+# Read functions for residual analysis plots
+```
+
+## DMSO
+
+```{r}
+ai_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "acrosome integrity_DMSO")
+ai_dmso$donor <- as.factor(ai_dmso$donor)
+names(ai_dmso) <- c("donor", "conc", "acrointact", "total")
+ai_dmso$acrointact_frac <- ai_dmso$acrointact / ai_dmso$total
+skimr::skim(ai_dmso)
+```
+
+There are four donors, no missing data.
+
+```{r}
+table(ai_dmso$donor, as.factor(ai_dmso$conc))
+```
+
+The data are balanced with one observation for each concentration and each donor and no missing data.
+
+```{r}
+ai_dmso_m1 <- glmer(cbind(acrointact, total - acrointact) ~ conc + (conc | donor),
+  data = ai_dmso, family = binomial(link = "logit"))
+summary(ai_dmso_m1)
+```
+
+The model is:
+
+`r equatiomatic::extract_eq(ai_dmso_m1)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = ai_dmso) +
+  geom_jitter(aes(x = conc, y = acrointact_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(ai_dmso_m1) * 100, col = donor)) +
+  labs(x = "[DMSO] (%)", y = "Intact acrosome (%)")
+```
+
+Generally, slopes are all negative, suggesting a negative concentration effect. Data are rather widespread. Shifts in the intercept per donor is not obvious here, but change in slope is much more marked. We may try simplifying the model so that only slopes vary between donors. Let's check it with a likelihood ratio test:
+
+```{r}
+ai_dmso_m2 <- glmer(cbind(acrointact, total - acrointact) ~ conc  + (0 + conc:donor | donor),
+  data = ai_dmso, family = binomial(link = "logit"))
+anova(ai_dmso_m1, ai_dmso_m2, refit = FALSE) # Despite the name, it is indeed a LR test
+```
+
+The likelihood ratio test does not detects significant differences between the full and simplified models at $\alpha$ = 5%. But... the model had a problem because we had a singularity. Let's try the simplification where the random effect `donor` only accounts for the intercept:
+
+```{r}
+ai_dmso_m3 <- glmer(cbind(acrointact, total - acrointact) ~ conc  + (1 | donor),
+  data = ai_dmso, family = binomial(link = "logit"))
+anova(ai_dmso_m1, ai_dmso_m3, refit = FALSE) # Despite the name, it is indeed a LR test
+```
+
+Here we draw the same conclusion, but this time our model fits without any problems. Let's continue our analysis with this simpler model `ai_dmso_m3`. This model is:
+
+`r equatiomatic::extract_eq(ai_dmso_m3)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = ai_dmso) +
+  geom_jitter(aes(x = conc, y = acrointact_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(ai_dmso_m3) * 100, col = donor)) +
+  labs(x = "[DMSO] (%)", y = "Intact acrosome (%)")
+```
+
+Visually, it seems not too bad, but it seems we have the two last points for donor 9 suggesting a smaller slope and last point for donor 8 in favour of a larger slope. Here, we have too few data points to really decide what is the best model. However, considering all the other variables studied here, a model with intercept depending on the donor is not to be rejected (it is clearly the best model wherever more data are available).
+
+```{r}
+summary(ai_dmso_m3)
+```
+
+The Z test indicates that `conc` is significantly different from zero at $\alpha$ = 5%. However, it is not the best test in the case of a mixed model like here. We prefer to rely on the 95% confidence interval calculated either on the profile, or via parametric bootstrap (and especially the later one):
+
+```{r}
+confint(ai_dmso_m3, level = 0.95) # 95% CI based on profile
+set.seed(96347)
+# 1000x parameter bootstrap
+(ai_dmso_m3_conf <- confint(ai_dmso_m3, level = 0.95, method = "boot", nsim  = 1000L))
+```
+
+1/5 of bootstrapped models present singularities. However, 95%CI from profiles and for parametric bootstrap are very close. So, we can trust them. Slope for `conc` is significantly different from zero at $\alpha$ = 5% because the 95% CI does not contain zero.
+
+### Additional verifications
+
+We could double-check the significance of the slope `conc` by looking at a likelihood ratio test when dropping `conc` from the model:
+
+```{r}
+#drop1(ai_dmso_m3, scope = "conc")
+ai_dmso_m4 <- glmer(cbind(acrointact, total - acrointact) ~ 1 + (1 | donor),
+  data = ai_dmso, family = binomial(link = "logit"))
+anova(ai_dmso_m3, ai_dmso_m4, refit = TRUE)
+```
+
+The model with `conc` is significantly different at $\alpha$ level 5% from a reference model that sets the slope `conc` = 0. There is thus a significant effect of DMSO concentration (confirmation of results obtained from 95% CI).
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(ai_dmso_m3)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+ai_dmso_m3_all <- allFit(ai_dmso_m3)
+summary(ai_dmso_m3_all)
+```
+
+### Analysis of the residuals
+
+Let's check how the Pearson's residuals distribute and if there is homoscedasticity.
+
+```{r}
+ai_dmso <- fortify.merMod(ai_dmso_m3)
+ggplot(data = ai_dmso, aes(x = .fitted, y = .scresid, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+Residuals do not seem weird, given the scarcity of the data.
+
+```{r}
+ggplot(data = ai_dmso, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity of the residuals seems acceptable (the blue curve that is a loess smoothing in the data is relatively horizontal).
+
+Note: according to Gauss-Markov theorem that indicates that linearity, random sample, non-collinearity between predictors, non-correlation between predictors and error term and homoscedasticity are the only requirements for our GLMM, we do not have to check it. Also the model is robust to departure of Normality, and none of the tests we made depend on a Normal distribution of the residuals (we said we don't trust z/t tests and replace them by likelihood ratio tests and parameterized bootstrapped confidence intervals). However, for completeness, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = ai_dmso, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(x = "Theoretical quantiles", y = "Pearson's residuals")
+```
+
+It appears to be good. A Shapiro-Wilk test does not confirm Normality, but we are pretty sure it is caused by the extreme value:
+
+```{r}
+shapiro.test(ai_dmso$.scresid)
+```
+
+## Predictions
+
+The model allows to calculate the drop in acrosome integrity according to DMSO concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is the calculations:
+
+```{r}
+ai_dmso_slope <- c(
+  ci95_min   = min(ai_dmso_m3_conf["conc", ]),
+  estimate = fixef(ai_dmso_m3)[["conc"]],
+  ci95_max  = max(ai_dmso_m3_conf["conc", ]))
+ai_dmso_slope
+#saveRDS(ai_dmso_slope, "../data/acrosome_integrity_DMSO_slope.rds")
+```
+
+Let's say we want to calculate the drop in acrosome integrity for various DMSO concentrations between 0 and 2% if the acrosome integrity of a sample without DMSO is 94%. The calculation is:
+
+```{r}
+predict_logit <- function(conc, intercept = 1, slopes) {
+  slopes_mat <- matrix(slopes, nrow = 1,
+    dimnames = list(NULL, names(slopes)))
+  data.frame(conc = conc, -intercept +
+      boot::inv.logit(boot::logit(intercept) +
+      conc %*% slopes_mat))
+}
+dmso_conc <- (0:20) / 10
+ai_dmso_lost <- predict_logit(dmso_conc, 0.94, ai_dmso_slope)
+ai_dmso_lost
+#saveRDS(ai_dmso_lost, "../data/acrosome_integrity_DMSO_lost.rds")
+```
+
+This is the lost in acrosome integrity that the model predicts. At 2% DMSO, we lose roughly 4%, and the 95%CI gives us a maximum lost of 7%.
+
+## Ethanol
+
+```{r}
+ai_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "acrosome integrity_EtOH")
+ai_etoh$donor <- as.factor(ai_etoh$donor)
+names(ai_etoh) <- c("donor", "conc", "acrointact", "total")
+ai_etoh$acrointact_frac <- ai_etoh$acrointact / ai_etoh$total
+skimr::skim(ai_etoh)
+```
+
+There are four donors, no missing data.
+
+```{r}
+table(ai_etoh$donor, as.factor(ai_etoh$conc))
+```
+
+The data are balanced with one observation for each concentration and each donor and no missing data.
+
+```{r}
+ai_etoh_m1 <- glmer(cbind(acrointact, total - acrointact) ~ conc + (conc | donor),
+  data = ai_etoh, family = binomial(link = "logit"))
+summary(ai_etoh_m1)
+```
+
+We have a singularity here. The model is:
+
+`r equatiomatic::extract_eq(ai_etoh_m1)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = ai_etoh) +
+  geom_jitter(aes(x = conc, y = acrointact_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(ai_etoh_m1) * 100, col = donor)) +
+  labs(x = "[ethanol] (%)", y = "Intact acrosome (%)")
+```
+
+Here the complete model was not able to estimate the variation of intercept per donor (so, it used the same one). However, data at concentration zero are more widespread. It is not clear if the model could be simplified for the intercept or the slope for the random effect `donor`. Let's look at both options...
+
+```{r}
+ai_etoh_m2 <- glmer(cbind(acrointact, total - acrointact) ~ conc  + (1 | donor),
+  data = ai_etoh, family = binomial(link = "logit"))
+anova(ai_etoh_m1, ai_etoh_m2) # Despite the name, it is indeed a LR test
+```
+
+Another model, with same intercept but different slopes:
+
+```{r}
+ai_etoh_m3 <- glmer(cbind(acrointact, total - acrointact) ~ conc  + (0 + conc:donor | donor),
+  data = ai_etoh, family = binomial(link = "logit"))
+anova(ai_etoh_m1, ai_etoh_m3) # Despite the name, it is indeed a LR test
+```
+
+The likelihood ratio test does not detects significant differences between the full and both simplified models at $\alpha$ = 5%, but the second model has singularities too. Using different slopes produces singular gradient. Here is the model with only intercept depending on the donor, which is fitted without problems:
+
+`r equatiomatic::extract_eq(ai_etoh_m2)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = ai_etoh) +
+  geom_jitter(aes(x = conc, y = acrointact_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(ai_etoh_m2) * 100, col = donor)) +
+  labs(x = "[etoh] (%)", y = "Intact acrosome (%)")
+```
+
+```{r}
+summary(ai_etoh_m2)
+```
+
+The Z test indicates that `conc` is not significantly different from zero at $\alpha$ = 5%. However, it is not the best test in the case of a mixed model like here. We prefer to rely on the 95% confidence interval calculated either on the profile, or via parametric bootstrap (and especially the later one):
+
+```{r}
+confint(ai_etoh_m2, level = 0.95) # 95% CI based on profile
+set.seed(7431)
+# 1000x parameter bootstrap
+(ai_etoh_m2_conf <- confint(ai_etoh_m2, level = 0.95, method = "boot", nsim  = 1000L))
+```
+
+We had 160 bootstrapped model with singularity among the 1000. Lower bound for the bootstrapped 95%CI is rather different to the one from profiles. This is not surprising since we have rather few data here. Slope for `conc` is not significantly different from zero at $\alpha$ = 5% because the 95% CI contains zero. However, it could be due to the scarcity of the data. Yet, the effect appears weak with a lost of a few percents for a concentration of 2% ethanol. We conclude here that the effect is either weak, or inexistent. Using upper bound 95%CI, we would have a variation of:
+
+```{r}
+# Let's consider a value of 0.94 at conc = 0, with a slope of -0.31
+# we lose:
+-0.94 + boot::inv.logit(boot::logit(0.94) - 0.32 * 2)
+```
+
+That is, we have less than 5% variation in acrosome integrity at worst at ethanol concentration of 2%.
+
+### Additional verifications
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(ai_etoh_m2)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+ai_etoh_m2_all <- allFit(ai_etoh_m2)
+summary(ai_etoh_m2_all)
+```
+
+### Analysis of the residuals
+
+Let's check how the residuals distribute and if there is homoscedasticity.
+
+```{r}
+ai_etoh <- fortify.merMod(ai_etoh_m2)
+ggplot(data = ai_etoh, aes(x = .fitted, y = .scresid, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+Given the scarcity of the data, residuals do not seem abnormal.
+
+```{r}
+ggplot(data = ai_etoh, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity of the residuals seems here acceptable (the blue curve that is a loess smoothing in the data is relatively horizontal).
+
+With the same remark as for DMSO, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = ai_etoh, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(x = "Theoretical quantiles", y = "Pearson's residuals")
+```
+
+It appears not particularly bad. A Shapiro-Wilk test confirms Normality (with caution because this test tends to be conservative):
+
+```{r}
+shapiro.test(ai_etoh$.scresid)
+```
+
+## General informations
+
+```{r}
+sessionInfo()
+```

@@ -1,0 +1,507 @@
+---
+title: "Influence of two widely used solvents, ethanol and dimethyl sulfoxide, on human sperm parameters - plots"
+author: "Marie Bisconti, Philippe Grosjean & Elise Hennebert"
+format: pdf
+editor: visual
+---
+
+```{r setup, include=FALSE}
+library(lme4)
+library(lmerTest)
+library(effects)
+library(ggplot2)
+theme_set(theme_classic())
+hex9 <- scales::hue_pal()(9)
+scales::show_col(hex9)
+# Also using readxl, equatiomatic, boot, ggpubr
+```
+
+## Total motility with DMSO
+
+```{r}
+mt_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "total motility_DMSO")
+names(mt_dmso) <- tolower(names(mt_dmso))
+mt_dmso$donor <- as.factor(mt_dmso$donor)
+names(mt_dmso) <- c("donor", "conc", "motile", "total")
+mt_dmso$motile_frac <- mt_dmso$motile / mt_dmso$total
+mt_dmso$motile_perc <- mt_dmso$motile_frac * 100
+mt_dmso$conc_f <- as.factor(mt_dmso$conc)
+# Selected model
+mt_dmso_m2 <- glmer(cbind(motile, total - motile) ~ conc  + (1 | donor),
+  data = mt_dmso, family = binomial(link = "logit"))
+#summary(mt_dmso_m2)
+```
+
+Plot of the model with lines per donor (the **correct** plot according to the model). Black dots + error bars= mean ± standard deviation, black line = concentration effect, excluding random donor effect = average effect across all donors.
+
+```{r}
+mt_conc_effect_dmso <- as.data.frame(effects::predictorEffect(mt_dmso_m2,
+  predictor = "conc")[c("x", "fit")])
+mob_c <- ggplot(data = mt_dmso) +
+  geom_jitter(aes(x = conc, y = motile_perc, col = donor), width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(mt_dmso_m2) * 100, col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = motile_perc), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = motile_perc),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = mt_conc_effect_dmso, aes(x = conc,
+    y = boot::inv.logit(fit) * 100), size = 0.8) +
+  ylim(25, 100) +
+  labs(x = "DMSO (%)", y = "Motile sperm (%)") +
+  scale_color_manual(values = hex9[1:8]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+## Total motility with ethanol
+
+```{r}
+mt_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "total motility_EtOH")
+mt_etoh$donor <- as.factor(mt_etoh$donor)
+names(mt_etoh) <- c("donor", "conc", "motile", "total")
+mt_etoh$motile_frac <- mt_etoh$motile / mt_etoh$total
+mt_etoh$motile_perc <- mt_etoh$motile_frac * 100
+mt_etoh$conc_f <- as.factor(mt_etoh$conc)
+# Selected model
+mt_etoh_m2 <- glmer(cbind(motile, total - motile) ~ conc  + (1 | donor),
+  data = mt_etoh, family = binomial(link = "logit"))
+#summary(mt_etoh_m2)
+```
+
+```{r}
+mt_conc_effect_etoh <- as.data.frame(effects::predictorEffect(mt_etoh_m2,
+  predictor = "conc")[c("x", "fit")])
+mob_a <- ggplot(data = mt_etoh) +
+  geom_jitter(aes(x = conc, y = motile_perc, col = donor), width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(mt_etoh_m2) * 100, col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = motile_perc), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = motile_perc),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = mt_conc_effect_etoh, aes(x = conc,
+    y = boot::inv.logit(fit) * 100), size = 0.8) +
+  ylim(25, 100) +
+  labs(x = "EtOH (%)", y = "Motile sperm (%)") +
+  scale_color_manual(values = hex9[1:8]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+## Progressive motility with DMSO
+
+```{r}
+mp_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "progressive motility_DMSO")
+mp_dmso$donor <- as.factor(mp_dmso$donor)
+names(mp_dmso) <- c("donor", "conc", "prog", "total")
+mp_dmso$prog_frac <- mp_dmso$prog / mp_dmso$total
+mp_dmso$prog_perc <- mp_dmso$prog_frac * 100
+mp_dmso$conc_f <- as.factor(mp_dmso$conc)
+# Selected model
+mp_dmso_m2 <- glmer(cbind(prog, total - prog) ~ conc  + (1 | donor),
+  data = mp_dmso, family = binomial(link = "logit"))
+#summary(mp_dmso_m2)
+```
+
+```{r}
+mp_conc_effect_dmso <- as.data.frame(effects::predictorEffect(mp_dmso_m2,
+  predictor = "conc")[c("x", "fit")])
+mob_d <- ggplot(data = mp_dmso) +
+  geom_jitter(aes(x = conc, y = prog_perc, col = donor), width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(mp_dmso_m2) * 100, col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = prog_perc), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = prog_perc),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = mp_conc_effect_dmso, aes(x = conc,
+    y = boot::inv.logit(fit) * 100), size = 0.8) +
+  ylim(25, 100) +
+  labs(x = "DMSO (%)", y = "Progressive motile sperm (%)") +
+  scale_color_manual(values = hex9[1:8]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+## Progressive motility with ethanol
+
+```{r}
+mp_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "progressive motility_EtOH")
+mp_etoh$donor <- as.factor(mp_etoh$donor)
+names(mp_etoh) <- c("donor", "conc", "prog", "total")
+mp_etoh$prog_frac <- mp_etoh$prog / mp_etoh$total
+mp_etoh$prog_perc <- mp_etoh$prog_frac * 100
+mp_etoh$conc_f <- as.factor(mp_etoh$conc)
+# Selected model
+mp_etoh_m2 <- glmer(cbind(prog, total - prog) ~ conc  + (1 | donor),
+  data = mp_etoh, family = binomial(link = "logit"))
+#summary(mp_etoh_m2)
+```
+
+```{r}
+mp_conc_effect_etoh <- as.data.frame(effects::predictorEffect(mp_etoh_m2,
+  predictor = "conc")[c("x", "fit")])
+mob_b <- ggplot(data = mp_etoh) +
+  geom_jitter(aes(x = conc, y = prog_perc, col = donor), width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(mp_etoh_m2) * 100, col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = prog_perc), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = prog_perc),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = mp_conc_effect_etoh, aes(x = conc,
+    y = boot::inv.logit(fit) * 100), size = 0.8) +
+  ylim(25, 100) +
+  labs(x = "EtOH (%)", y = "Progressive motile sperm (%)") +
+  scale_color_manual(values = hex9[1:8]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+### 
+
+### Combined plots DMSO + ethanol
+
+```{r, fig.width=7, fig.height=7}
+mob <- ggpubr::ggarrange(mob_a, mob_b, mob_c, mob_d, labels = "AUTO",
+  common.legend = TRUE, legend = "bottom", hjust = -0.5, vjust = 1.5,
+  font.label = list(size = 14, color = "black", face = "plain", family = NULL))
+mob
+ggsave("../figures/motility.pdf", plot = mob)
+```
+
+## Acrosome integrity with DMSO
+
+```{r, echo=FALSE}
+ai_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "acrosome integrity_DMSO")
+ai_dmso$donor <- as.factor(ai_dmso$donor)
+names(ai_dmso) <- c("donor", "conc", "acrointact", "total")
+ai_dmso$acrointact_frac <- ai_dmso$acrointact / ai_dmso$total
+ai_dmso$acrointact_perc <- ai_dmso$acrointact_frac * 100
+ai_dmso$conc_f <- as.factor(ai_dmso$conc)
+# Selected model
+ai_dmso_m2 <- glmer(cbind(acrointact, total - acrointact) ~ conc  + (1 | donor),
+  data = ai_dmso, family = binomial(link = "logit"))
+#summary(ai_dmso_m2)
+```
+
+```{r}
+ai_conc_effect_dmso <- as.data.frame(effects::predictorEffect(ai_dmso_m2,
+  predictor = "conc")[c("x", "fit")])
+ac_b <- ggplot(data = ai_dmso) +
+  geom_jitter(aes(x = conc, y = acrointact_perc, col = donor),
+    width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(ai_dmso_m2) * 100, col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = acrointact_perc), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = acrointact_perc),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = ai_conc_effect_dmso, aes(x = conc,
+    y = boot::inv.logit(fit) * 100), size = 0.8) +
+  ylim(83, 100) +
+  labs(x = "DMSO (%)", y = "Acrosome intact sperm (%)") +
+  scale_color_manual(values = hex9[6:9]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+## Acrosomal reaction with ethanol
+
+```{r, echo=FALSE}
+ai_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "acrosome integrity_EtOH")
+ai_etoh$donor <- as.factor(ai_etoh$donor)
+names(ai_etoh) <- c("donor", "conc", "acrointact", "total")
+ai_etoh$acrointact_frac <- ai_etoh$acrointact / ai_etoh$total
+ai_etoh$acrointact_perc <- ai_etoh$acrointact_frac * 100
+ai_etoh$conc_f <- as.factor(ai_etoh$conc)
+# Selected model
+ai_etoh_m2 <- glmer(cbind(acrointact, total - acrointact) ~ conc  + (1 | donor),
+  data = ai_etoh, family = binomial(link = "logit"))
+#summary(ai_etoh_m2)
+```
+
+```{r}
+ai_conc_effect_etoh <- as.data.frame(effects::predictorEffect(ai_etoh_m2,
+  predictor = "conc")[c("x", "fit")])
+ac_a <- ggplot(data = ai_etoh) +
+  geom_jitter(aes(x = conc, y = acrointact_perc, col = donor),
+    width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(ai_etoh_m2) * 100, col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = acrointact_perc), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = acrointact_perc),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = ai_conc_effect_etoh, aes(x = conc,
+    y = boot::inv.logit(fit) * 100), size = 0.8) +
+  ylim(83, 100) +
+  labs(x = "EtOH (%)", y = "Acrosome intact sperm (%)") +
+  scale_color_manual(values = hex9[6:9]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+```{r fig.width=7, fig.height=4}
+acro <- ggpubr::ggarrange(ac_a, ac_b, labels = "AUTO",
+  common.legend = TRUE, legend = "bottom", hjust = -0.5, vjust = 1.5,
+  font.label = list(size = 14, color = "black", face = "plain", family = NULL))
+acro
+ggsave("../figures/acrosome.pdf", plot = acro)
+```
+
+## Vitality with DMSO
+
+```{r, echo=FALSE}
+vit_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "vitality_DMSO")
+vit_dmso$donor <- as.factor(vit_dmso$donor)
+names(vit_dmso) <- c("donor", "conc", "live", "total")
+vit_dmso$live_frac <- vit_dmso$live / vit_dmso$total
+vit_dmso$live_perc <- vit_dmso$live_frac * 100
+vit_dmso$conc_f <- as.factor(vit_dmso$conc)
+# Selected model
+vit_dmso_m2 <- glmer(cbind(live, total - live) ~ conc  + (1 | donor),
+  data = vit_dmso, family = binomial(link = "logit"))
+#summary(vit_dmso_m2)
+```
+
+```{r}
+vit_conc_effect_dmso <- as.data.frame(effects::predictorEffect(vit_dmso_m2,
+  predictor = "conc")[c("x", "fit")])
+vit_b <- ggplot(data = vit_dmso) +
+  geom_jitter(aes(x = conc, y = live_perc, col = donor), width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(vit_dmso_m2) * 100, col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = live_perc), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = live_perc),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = vit_conc_effect_dmso, aes(x = conc,
+    y = boot::inv.logit(fit) * 100), size = 0.8) +
+  ylim(83, 100) +
+  labs(x = "DMSO (%)", y = "Live sperm (%)") +
+  scale_color_manual(values = hex9[1:5]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+## Vitality with ethanol
+
+```{r, echo=FALSE}
+vit_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "vitality_EtOH")
+vit_etoh$donor <- as.factor(vit_etoh$donor)
+names(vit_etoh) <- c("donor", "conc", "live", "total")
+vit_etoh$live_frac <- vit_etoh$live / vit_etoh$total
+vit_etoh$live_perc <- vit_etoh$live_frac * 100
+vit_etoh$conc_f <- as.factor(vit_etoh$conc)
+# Selected model
+vit_etoh_m2 <- glmer(cbind(live, total - live) ~ conc  + (1 | donor),
+  data = vit_etoh, family = binomial(link = "logit"))
+#summary(vit_etoh_m2)
+```
+
+```{r}
+vit_conc_effect_etoh <- as.data.frame(effects::predictorEffect(vit_etoh_m2,
+  predictor = "conc")[c("x", "fit")])
+vit_a <- ggplot(data = vit_etoh) +
+  geom_jitter(aes(x = conc, y = live_perc, col = donor), width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(vit_etoh_m2) * 100, col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = live_perc), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = live_perc),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = vit_conc_effect_etoh, aes(x = conc,
+    y = boot::inv.logit(fit) * 100), size = 0.8) +
+  ylim(83, 100) +
+  labs(x = "EtOH (%)", y = "Live sperm (%)") +
+  scale_color_manual(values = hex9[1:5]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+```{r, fig.width=7, fig.height=4}
+vital <- ggpubr::ggarrange(vit_a, vit_b, labels = "AUTO",
+  common.legend = TRUE, legend = "bottom", hjust = -0.5, vjust = 1.5,
+  font.label = list(size = 14, color = "black", face = "plain", family = NULL))
+vital
+ggsave("../figures/vitality.pdf", plot = vital)
+```
+
+## Capacitation with DMSO
+
+```{r, echo=FALSE}
+cap_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "capacitation_DMSO")
+cap_dmso$donor <- as.factor(cap_dmso$donor)
+names(cap_dmso) <- c("donor", "conc", "capa")
+cap_dmso$conc_f <- as.factor(cap_dmso$conc)
+# Selected model
+cap_dmso_m2 <- lmer(capa ~ conc + (1 | donor), data = cap_dmso)
+#summary(cap_dmso_m2)
+```
+
+```{r}
+cap_conc_effect_dmso <- as.data.frame(effects::predictorEffect(cap_dmso_m2,
+  predictor = "conc")[c("x", "fit")])
+cap_b <- ggplot(data = cap_dmso) +
+  geom_jitter(aes(x = conc, y = capa, col = donor), width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(cap_dmso_m2), col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = capa), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = capa),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = cap_conc_effect_dmso, aes(x = conc,
+    y = fit), size = 0.8) +
+  ylim(0, 1.5) +
+  labs(x = "DMSO (%)", y = "Relative densitometry\nphosphotyrosines/ß-tubulin") +
+  scale_color_manual(values = hex9[1:5]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+## Capacitation with ethanol
+
+```{r, echo=FALSE}
+cap_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "capacitation_EtOH")
+cap_etoh$donor <- as.factor(cap_etoh$donor)
+names(cap_etoh) <- c("donor", "conc", "capa")
+cap_etoh$conc_f <- as.factor(cap_etoh$conc)
+# Selected model
+cap_etoh_m2 <- lmer(capa ~ conc + (1 | donor), data = cap_etoh)
+#summary(cap_etoh_m2)
+```
+
+```{r}
+cap_conc_effect_etoh <- as.data.frame(effects::predictorEffect(cap_etoh_m2,
+  predictor = "conc")[c("x", "fit")])
+cap_a <- ggplot(data = cap_etoh) +
+  geom_jitter(aes(x = conc, y = capa, col = donor), width = 0.025) +
+  geom_line(aes(x = conc, y = fitted(cap_etoh_m2), col = donor),
+    alpha = 0.5) +
+  stat_summary(aes(x = conc, y = capa), geom = "pointrange",
+    fun = "mean", shape = 16, size = 0.6) +
+  stat_summary(aes(x = conc, y = capa),
+    geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+    alpha = 0.7, width = 0.05) +
+  geom_line(data = cap_conc_effect_etoh, aes(x = conc,
+    y = fit), size = 0.8) +
+  ylim(0, 1.5) +
+  labs(x = "EtOH (%)", y = "Relative densitometry\nphosphotyrosines/ß-tubulin") +
+  scale_color_manual(values = hex9[1:5]) +
+  guides(colour = guide_legend(nrow = 1))
+```
+
+```{r, fig.width=7, fig.height=7}
+cap_c <- cap_d <- ggplot() + theme_minimal()
+capa <- ggpubr::ggarrange(cap_c, cap_d, cap_a, cap_b, labels = "AUTO",
+  common.legend = TRUE, legend = "bottom", hjust = -0.5, vjust = 1.5,
+  font.label = list(size = 14, color = "black", face = "plain", family = NULL))
+capa
+ggsave("../figures/capacitation.pdf", plot = capa)
+```
+
+## Effect of time on total motility
+
+```{r}
+mtt_cont <- readxl::read_excel("../data/Table S3.xlsx", sheet = "total motility_control")
+mtt_cont$treat <- "control"
+mtt_dmso <- readxl::read_excel("../data/Table S3.xlsx", sheet = "total motility_2%DMSO")
+mtt_dmso$treat <- "DMSO 2%"
+mtt_etoh1 <- readxl::read_excel("../data/Table S3.xlsx", sheet = "total motility_1%EtOH")
+mtt_etoh1$treat <- "EtOH 1%"
+mtt_etoh2 <- readxl::read_excel("../data/Table S3.xlsx", sheet = "total motility_2%EtOH")
+mtt_etoh2$treat <- "EtOH 2%"
+mtt <- rbind(mtt_cont, mtt_dmso, mtt_etoh1, mtt_etoh2)
+mtt$donor <- as.factor(mtt$donor)
+mtt$treat <- as.factor(mtt$treat)
+names(mtt) <- c("donor", "time", "motile", "total", "treat")
+mtt$motile_frac <- mtt$motile / mtt$total
+mtt$motile_perc <- mtt$motile_frac * 100
+# Selected model
+mtt_m2 <- glmer(cbind(motile, total - motile) ~ treat * time + (1 | donor),
+  data = mtt, family = binomial(link = "logit"))
+```
+
+```{r}
+mtt_conc_effect <- as.data.frame(effects::predictorEffect(mtt_m2,
+  predictor = "time")[c("x", "fit")])
+time_a <- ggplot(data = mtt) +
+  geom_jitter(aes(x = time, y = motile_perc, col = treat),
+    width = 0.035, alpha = 0.5, size = 1.2) +
+  #geom_line(aes(x = time, y = fitted(mtt_m2) * 100, col = treat),
+  #  alpha = 0.5) +
+  geom_line(data = mtt_conc_effect, aes(x = x.time,
+    y = boot::inv.logit(fit) * 100, col = x.treat), size = 0.8) +
+  stat_summary(aes(x = time, y = motile_perc, col = treat), geom = "point",
+    fun = "mean", shape = 19, size = 2.5) +
+  #stat_summary(aes(x = time, y = motile_perc, col = treat),
+  #  geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+  #  alpha = 0.7, width = 0.15, position = "dodge") +
+  ylim(25, 100) +
+  scale_color_manual(values = c("darkgray", "red", "darkblue", "royalblue1")) +
+  labs(x = "Time (h)", y = "Motile sperm (%)") #+
+  #guides(colour = guide_legend(title = "Treatment", nrow = 1))
+```
+
+## Effect of time on progressive motility
+
+```{r}
+mpt_cont <- readxl::read_excel("../data/Table S3.xlsx", sheet = "progressive motility_control")
+mpt_cont$treat <- "control"
+mpt_dmso <- readxl::read_excel("../data/Table S3.xlsx", sheet = "progressive motility_2%DMSO")
+mpt_dmso$treat <- "DMSO 2%"
+mpt_etoh1 <- readxl::read_excel("../data/Table S3.xlsx", sheet = "progressive motility_1%EtOH")
+mpt_etoh1$treat <- "EtOH 1%"
+mpt_etoh2 <- readxl::read_excel("../data/Table S3.xlsx", sheet = "progressive motility_2%EtOH")
+mpt_etoh2$treat <- "EtOH 2%"
+mpt <- rbind(mpt_cont, mpt_dmso, mpt_etoh1, mpt_etoh2)
+mpt$donor <- as.factor(mpt$donor)
+mpt$treat <- as.factor(mpt$treat)
+names(mpt) <- c("donor", "time", "prog", "total", "treat")
+mpt$prog_frac <- mpt$prog / mpt$total
+mpt$prog_perc <- mpt$prog_frac * 100
+# Selected model
+mpt_m2 <- glmer(cbind(prog, total - prog) ~ treat * time + (1 | donor),
+  data = mpt, family = binomial(link = "logit"))
+```
+
+```{r}
+mpt_conc_effect <- as.data.frame(effects::predictorEffect(mpt_m2,
+  predictor = "time")[c("x", "fit")])
+time_b <- ggplot(data = mpt) +
+  geom_jitter(aes(x = time, y = prog_perc, col = treat),
+    width = 0.035, alpha = 0.5, size = 1.2) +
+  #geom_line(aes(x = time, y = fitted(mpt_m2) * 100, col = treat),
+  #  alpha = 0.5) +
+  geom_line(data = mpt_conc_effect, aes(x = x.time,
+    y = boot::inv.logit(fit) * 100, col = x.treat), size = 0.8) +
+  stat_summary(aes(x = time, y = prog_perc, col = treat), geom = "point",
+    fun = "mean", shape = 19, size = 2.5) +
+  #stat_summary(aes(x = time, y = prog_perc, col = treat),
+  #  geom = "errorbar", fun.data = "mean_sdl", fun.args = list(mult = 1),
+  #  alpha = 0.7, width = 0.15, position = "dodge") +
+  ylim(25, 100) +
+  scale_color_manual(values = c("darkgray", "red", "navyblue", "royalblue1")) +
+  labs(x = "Time (h)", y = "Progressive motile sperm (%)") #+
+  #guides(colour = guide_legend(title = "Treatment", nrow = 1))
+```
+
+```{r, fig.width=7, fig.height=4}
+time <- ggpubr::ggarrange(time_a, time_b, labels = "AUTO",
+  common.legend = TRUE, legend = "bottom", hjust = -0.5, vjust = 1.5,
+  font.label = list(size = 14, color = "black", face = "plain", family = NULL))
+time
+ggsave("../figures/time.pdf", plot = time)
+```

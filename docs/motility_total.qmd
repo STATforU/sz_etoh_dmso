@@ -1,0 +1,372 @@
+---
+title: "Total motility"
+author: "Marie Bisconti, Philippe Grosjean & Elise Hennebert"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+The effect of DMSO and ethanol is evaluated at concentrations from 0 up to 2% on spermatozoa total motility.
+
+```{r setup, include=FALSE}
+library(lme4)
+library(ggplot2)
+theme_set(theme_bw())
+# Also using readxl, skimr, equatiomatic, optimix, dfoptim, boot
+# Read functions for residual analysis plots
+```
+
+## DMSO
+
+```{r}
+mt_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "total motility_DMSO")
+mt_dmso$donor <- as.factor(mt_dmso$donor)
+names(mt_dmso) <- c("donor", "conc", "motile", "total")
+mt_dmso$motile_frac <- mt_dmso$motile / mt_dmso$total
+skimr::skim(mt_dmso)
+```
+
+There are eight donors, no missing data.
+
+```{r}
+table(mt_dmso$donor, as.factor(mt_dmso$conc))
+```
+
+The data are balanced with one observation for each concentration and each donor and no missing data.
+
+```{r}
+mt_dmso_m1 <- glmer(cbind(motile, total - motile) ~ conc + (conc | donor),
+  data = mt_dmso, family = binomial(link = "logit"))
+summary(mt_dmso_m1)
+```
+
+The model is:
+
+`r equatiomatic::extract_eq(mt_dmso_m1)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = mt_dmso) +
+  geom_jitter(aes(x = conc, y = motile_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(mt_dmso_m1) * 100, col = donor)) +
+  labs(x = "[DMSO] (%)", y = "Total motility (%)")
+```
+
+Generally, slopes are all negative, suggesting a negative concentration effect. Data are rather widespread. There are definitely shifts in the intercept per donor (different motility at \[DMSO\] = 0). Slopes seems not too different between donors (can the model be simplified?). Let's check it with a likelihood ratio test:
+
+```{r}
+mt_dmso_m2 <- glmer(cbind(motile, total - motile) ~ conc  + (1 | donor),
+  data = mt_dmso, family = binomial(link = "logit"))
+anova(mt_dmso_m1, mt_dmso_m2, refit = FALSE) # Despite the name, it is indeed a LR test
+```
+
+The likelihood ratio test does not detects significant differences between the full and simplified models at $\alpha$ = 5%. We could thus use the simplest `mt_dmso_m2` model with only a shift in the slope per donor. This model is:
+
+`r equatiomatic::extract_eq(mt_dmso_m2)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = mt_dmso) +
+  geom_jitter(aes(x = conc, y = motile_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(mt_dmso_m2) * 100, col = donor)) +
+  labs(x = "[DMSO] (%)", y = "Total motility (%)")
+```
+
+```{r}
+summary(mt_dmso_m2)
+```
+
+The Z test indicates that `conc` is significantly different from zero at $\alpha$ = 5%. However, it is not the best test in the case of a mixed model like here. We prefer to rely on the 95% confidence interval calculated either on the profile, or via parametric bootstrap (and especially the later one):
+
+```{r}
+confint(mt_dmso_m2, level = 0.95) # 95% CI based on profile
+set.seed(8434)
+# 1000x parameter bootstrap
+(mt_dmso_m2_conf <- confint(mt_dmso_m2, level = 0.95,
+  method = "boot", nsim  = 1000L))
+```
+
+Slope for `conc` is significantly different from zero at $\alpha$ = 5% because the 95% CI does not contain zero.
+
+### Additional verifications
+
+Check if there is not a overdispersion (in this case, a binomial generalized model would not be adequate), $Var(Y)=\varphi N p(1 - p)$ with $\varphi$, the overdispersion coefficient that has to be close to zero. However, "overdispersion is not estimable (and hence practically irrelevant) for Bernoulli models (= binary data = binomial with N=1).", see [glmmFAQ](http://bbolker.github.io/mixedmodels-misc/glmmFAQ.html#model-extensions). Thus, it cannot be estimated here.
+
+We could double-check the significance of the slope `conc` by looking at a likelihood ratio test when dropping `conc` from the model:
+
+```{r}
+#drop1(mt_dmso_m2, scope = "conc")
+mt_dmso_m3 <- glmer(cbind(motile, total - motile) ~ 1 + (1 | donor),
+  data = mt_dmso, family = binomial(link = "logit"))
+anova(mt_dmso_m2, mt_dmso_m3, refit = TRUE)
+```
+
+The model with `conc` is significantly different at $\alpha$ level 5% from a reference model that sets the slope `conc` = 0. There is thus a significant effect of DMSO concentration (confirmation of results obtained from 95% CI).
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(mt_dmso_m2)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+mt_dmso_m2_all <- allFit(mt_dmso_m2)
+summary(mt_dmso_m2_all)
+```
+
+### Analysis of the residuals
+
+Let's check how the residuals distribute and if there is homoscedasticity.
+
+```{r}
+mt_dmso <- fortify.merMod(mt_dmso_m2)
+ggplot(data = mt_dmso, aes(x = .fitted, y = .scresid, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+There is one extreme value, but otherwise, residuals seem rather correctly distributed. Linearity is good here.
+
+```{r}
+ggplot(data = mt_dmso, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity of the residuals seems here acceptable (the blue curve that is a loess smoothing in the data is relatively horizontal).
+
+Note: according to Gauss-Markov theorem that indicates that linearity, random sample, non-collinearity between predictors, non-correlation between predictors and error term and homoscedasticity are the only requirements for our GLMM, we do not have to check it. Also the model is robust to departure of Normality, and none of the tests we made depend on a Normal distribution of the residuals (we said we don't trust z/t tests and replace them by likelihood ratio tests and parameterized bootstrapped confidence intervals). However, for completeness, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = mt_dmso, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(x = "Theoretical quantiles", y = "Pearson's residuals")
+```
+
+It appears not too bad, except for our extreme value that is clearly visible here at the top. A Shapiro-Wilk test does not confirm Normality, but we are pretty sure it is caused by the extreme value:
+
+```{r}
+shapiro.test(mt_dmso$.scresid)
+```
+
+## Predictions
+
+The model allows to calculate the drop in total mobility according to DMSO concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
+
+```{r}
+mt_dmso_slope <- c(
+  ci95_min   = min(mt_dmso_m2_conf["conc", ]),
+  estimate = fixef(mt_dmso_m2)[["conc"]],
+  ci95_max  = max(mt_dmso_m2_conf["conc", ]))
+mt_dmso_slope
+#saveRDS(mt_dmso_slope, "../data/motility_total_DMSO_slope.rds")
+```
+
+Let's say we want to calculate the drop in total mobility for various DMSO concentrations between 0 and 2% if the total mobility of a sample without DMSO is 80%. The calculation is:
+
+```{r}
+predict_logit <- function(conc, intercept = 1, slopes) {
+  slopes_mat <- matrix(slopes, nrow = 1,
+    dimnames = list(NULL, names(slopes)))
+  data.frame(conc = conc, -intercept +
+      boot::inv.logit(boot::logit(intercept) +
+      conc %*% slopes_mat))
+}
+dmso_conc <- (0:20) / 10
+mt_dmso_lost <- predict_logit(dmso_conc, 0.8, mt_dmso_slope)
+mt_dmso_lost
+#saveRDS(mt_dmso_lost, "../data/motility_total_DMSO_lost.rds")
+```
+
+This is the lost in total mobility that the model predicts.
+
+## Ethanol
+
+```{r}
+mt_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "total motility_EtOH")
+mt_etoh$donor <- as.factor(mt_etoh$donor)
+names(mt_etoh) <- c("donor", "conc", "motile", "total")
+mt_etoh$motile_frac <- mt_etoh$motile / mt_etoh$total
+skimr::skim(mt_etoh)
+```
+
+There are also the same eight donors, no missing data.
+
+```{r}
+table(mt_etoh$donor, as.factor(mt_etoh$conc))
+```
+
+The data are balanced with one observation for each concentration and each donor and no missing data.
+
+```{r}
+mt_etoh_m1 <- glmer(cbind(motile, total - motile) ~ conc + (conc | donor),
+  data = mt_etoh, family = binomial(link = "logit"))
+summary(mt_etoh_m1)
+```
+
+The model is:
+
+`r equatiomatic::extract_eq(mt_etoh_m1)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = mt_etoh) +
+  geom_jitter(aes(x = conc, y = motile_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(mt_etoh_m1) * 100, col = donor)) +
+  labs(x = "[ethanol] (%)", y = "Total motility (%)")
+```
+
+Generally, slopes are all negative, suggesting a negative concentration effect. Data are rather widespread. There are definitely shifts in the intercept per donor (different motility at \[ethanol\] = 0). Slopes seems more different between donors than for DMSO. However, we will also check if the model can be simplified using a likelihood ratio test:
+
+```{r}
+mt_etoh_m2 <- glmer(cbind(motile, total - motile) ~ conc  + (1 | donor),
+  data = mt_etoh, family = binomial(link = "logit"))
+anova(mt_etoh_m1, mt_etoh_m2, refit = FALSE) # Despite the name, it is indeed a LR test
+```
+
+The likelihood ratio test does not detects significant differences between the full and simplified models at $\alpha$ = 5%. We could thus use the simplest `mt_etoh_m2` model with only a shift in the slope per donor. This model is:
+
+`r equatiomatic::extract_eq(mt_etoh_m2)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = mt_etoh) +
+  geom_jitter(aes(x = conc, y = motile_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(mt_etoh_m2) * 100, col = donor)) +
+  labs(x = "[etoh] (%)", y = "Total motility (%)")
+```
+
+```{r}
+summary(mt_etoh_m2)
+```
+
+The Z test indicates that `conc` is significantly different from zero at $\alpha$ = 5%. However, it is not the best test in the case of a mixed model like here. We prefer to rely on the 95% confidence interval calculated either on the profile, or via parametric bootstrap (and especially the later one):
+
+```{r}
+confint(mt_etoh_m2, level = 0.95) # 95% CI based on profile
+set.seed(535)
+# 1000x parameter bootstrap
+(mt_etoh_m2_conf <- confint(mt_etoh_m2, level = 0.95,
+  method = "boot", nsim  = 1000L))
+```
+
+We had one model with singularity among the 1000, not a big problem (we may ignore this warning). Slope for `conc` is significantly different from zero at $\alpha$ = 5% because the 95% CI does not contain zero.
+
+### Additional verifications
+
+We could double-check the significance of the slope `conc` by looking at a likelihood ratio test when dropping `conc` from the model:
+
+```{r}
+#drop1(mt_etoh_m2, scope = "conc")
+mt_etoh_m3 <- glmer(cbind(motile, total - motile) ~ 1 + (1 | donor),
+  data = mt_etoh, family = binomial(link = "logit"))
+anova(mt_etoh_m2, mt_etoh_m3, refit = FALSE)
+```
+
+The model with `conc` is significantly different at $\alpha$ level 5% from a reference model that sets the slope `conc` = 0. There is thus a significant effect of ethanol concentration (confirmation of results obtained from 95% CI).
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(mt_etoh_m2)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+mt_etoh_m2_all <- allFit(mt_etoh_m2)
+summary(mt_etoh_m2_all)
+```
+
+### Analysis of the residuals
+
+Let's check how the residuals distribute and if there is homoscedasticity.
+
+```{r}
+mt_etoh <- fortify.merMod(mt_etoh_m2)
+ggplot(data = mt_etoh, aes(x = .fitted, y = .scresid, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+There is one extreme value (less extreme than for DMSO), but otherwise, residuals seem rather correctly distributed. Linearity is good here.
+
+```{r}
+ggplot(data = mt_etoh, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity of the residuals seems here acceptable (the blue curve that is a loess smoothing in the data is relatively horizontal).
+
+With the same remark as for DMSO, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = mt_etoh, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(x = "Theoretical quantiles", y = "Pearson's residuals")
+```
+
+It appears not too good. A Shapiro-Wilk test indicates mild non Normality (with caution because this test tends to be conservative):
+
+```{r}
+shapiro.test(mt_etoh$.scresid)
+```
+
+### Predictions
+
+The model allows to calculate the drop in total mobility according to ethanol concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
+
+```{r}
+mt_etoh_slope <- c(
+  ci95_min   = min(mt_etoh_m2_conf["conc", ]),
+  estimate = fixef(mt_etoh_m2)[["conc"]],
+  ci95_max  = max(mt_etoh_m2_conf["conc", ]))
+mt_etoh_slope
+#saveRDS(mt_etoh_slope, "../data/motility_total_ETOH_slope.rds")
+```
+
+Let's say we want to calculate the drop in total mobility for various ethanol concentrations between 0 and 2% if the total mobility in a sample without ethanol is 80%. The calculation is:
+
+```{r}
+predict_logit <- function(conc, intercept = 1, slopes) {
+  slopes_mat <- matrix(mt_etoh_slope, nrow = 1,
+    dimnames = list(NULL, names(mt_etoh_slope)))
+  data.frame(conc = conc, -intercept +
+    boot::inv.logit(boot::logit(intercept) +
+    conc %*% slopes_mat))
+}
+etoh_conc <- (0:20) / 10
+mt_etoh_lost <- predict_logit(etoh_conc, 0.8, mt_etoh_slope)
+mt_etoh_lost
+#saveRDS(mt_etoh_lost, "../data/motility_total_ETOH_lost.rds")
+```
+
+This is the lost in total mobility that the model predicts.
+
+## General informations
+
+```{r}
+sessionInfo()
+```

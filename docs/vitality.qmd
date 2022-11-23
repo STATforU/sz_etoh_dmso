@@ -1,0 +1,320 @@
+---
+title: "Vitality"
+author: "Marie Bisconti, Philippe Grosjean & Elise Hennebert"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+The effect of DMSO and ethanol is evaluated at concentrations from 0 up to 2% on the vitality of spermatozoa.
+
+```{r setup, include=FALSE}
+library(lme4)
+library(ggplot2)
+theme_set(theme_bw())
+# Also using readxl, skimr, equatiomatic, optimix, dfoptim, boot
+# Read functions for residual analysis plots
+```
+
+## DMSO
+
+```{r}
+vit_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "vitality_DMSO")
+vit_dmso$donor <- as.factor(vit_dmso$donor)
+names(vit_dmso) <- c("donor", "conc", "live", "total")
+vit_dmso$live_frac <- vit_dmso$live / vit_dmso$total
+skimr::skim(vit_dmso)
+```
+
+There are five donors, no missing data.
+
+```{r}
+table(vit_dmso$donor, as.factor(vit_dmso$conc))
+```
+
+The data are balanced with one observation for each concentration and each donor and no missing data.
+
+```{r}
+vit_dmso_m1 <- glmer(cbind(live, total - live) ~ conc + (conc | donor),
+  data = vit_dmso, family = binomial(link = "logit"))
+summary(vit_dmso_m1)
+```
+
+We observe a singularity because correlation between slope and intercept for the random term `donor` is close to the boundary. Let's see if a simplified model where only the intercept depends on the donor fits better...
+
+```{r}
+vit_dmso_m2 <- glmer(cbind(live, total - live) ~ conc  + (1 | donor),
+  data = vit_dmso, family = binomial(link = "logit"))
+summary(vit_dmso_m2)
+```
+
+No singularities any more. We stick with this second model. This model is:
+
+`r equatiomatic::extract_eq(vit_dmso_m2)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = vit_dmso) +
+  geom_jitter(aes(x = conc, y = live_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(vit_dmso_m2) * 100, col = donor)) +
+  labs(x = "[DMSO] (%)", y = "Live sperm (%)")
+```
+
+The Z test indicates that `conc` is significantly different from zero at $\alpha$ = 5% (see summary of the model above). However, it is not the best test in the case of a mixed model like here. We prefer to rely on the 95% confidence interval calculated either on the profile, or via parametric bootstrap (and especially the later one):
+
+```{r}
+confint(vit_dmso_m2, level = 0.95) # 95% CI based on profile
+set.seed(7400)
+# 1000x parameter bootstrap
+(vit_dmso_m2_conf <- confint(vit_dmso_m2, level = 0.95,
+  method = "boot", nsim  = 1000L))
+```
+
+We have 1/20 of the bootstrapped models that exhibit singularities. However, 95%CI from parametric bootstraps and from profiles are not very different. So, we can trust them. Slope for `conc` is significantly different from zero at $\alpha$ = 5% because the 95% CI does not contain zero.
+
+### Additional verifications
+
+We could double-check the significance of the slope `conc` by looking at a likelihood ratio test when dropping `conc` from the model:
+
+```{r}
+#drop1(vit_dmso_m2, scope = "conc")
+vit_dmso_m3 <- glmer(cbind(live, total - live) ~ 1 + (1 | donor),
+  data = vit_dmso, family = binomial(link = "logit"))
+anova(vit_dmso_m2, vit_dmso_m3, refit = TRUE)
+```
+
+The model with `conc` is significantly different at $\alpha$ level 5% from a reference model that sets the slope `conc` = 0. There is thus a significant effect of DMSO concentration (confirmation of results obtained from 95% CI).
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(vit_dmso_m2)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+vit_dmso_m2_all <- allFit(vit_dmso_m2)
+summary(vit_dmso_m2_all)
+```
+
+### Analysis of the residuals
+
+Let's check how the residuals distribute and if there is homoscedasticity.
+
+```{r}
+vit_dmso <- fortify.merMod(vit_dmso_m2)
+ggplot(data = vit_dmso, aes(x = .fitted, y = .scresid, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+There is one or two extreme values, but otherwise, residuals seem rather correctly distributed. Linearity is good here.
+
+```{r}
+ggplot(data = vit_dmso, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity of the residuals seems here acceptable (the blue curve that is a loess smoothing in the data is relatively horizontal).
+
+Note: according to Gauss-Markov theorem that indicates that linearity, random sample, non-collinearity between predictors, non-correlation between predictors and error term and homoscedasticity are the only requirements for our GLMM, we do not have to check it. Also the model is robust to departure of Normality, and none of the tests we made depend on a Normal distribution of the residuals (we said we don't trust z/t tests and replace them by likelihood ratio tests and parameterized bootstrapped confidence intervals). However, for completeness, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = vit_dmso, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(c = "Thearetical quantile", y = "Pearson's residuals")
+```
+
+It appears not too bad, except for one extreme value that is clearly visible here at the top. A Shapiro-Wilk test confirms Normality:
+
+```{r}
+shapiro.test(vit_dmso$.scresid)
+```
+
+## Predictions
+
+The model allows to calculate the drop in vitality according to DMSO concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
+
+```{r}
+vit_dmso_slope <- c(
+  ci95_min   = min(vit_dmso_m2_conf["conc", ]),
+  estimate = fixef(vit_dmso_m2)[["conc"]],
+  ci95_max  = max(vit_dmso_m2_conf["conc", ]))
+vit_dmso_slope
+#saveRDS(vit_dmso_slope, "../data/vitality_DMSO_slope.rds")
+```
+
+Let's say we want to calculate the drop in vitality for various DMSO concentrations between 0 and 2% if the vitality of a sample without DMSO is 94%. The calculation is:
+
+```{r}
+predict_logit <- function(conc, intercept = 1, slopes) {
+  slopes_mat <- matrix(slopes, nrow = 1,
+    dimnames = list(NULL, names(slopes)))
+  data.frame(conc = conc, -intercept +
+      boot::inv.logit(boot::logit(intercept) +
+      conc %*% slopes_mat))
+}
+dmso_conc <- (0:20) / 10
+vit_dmso_lost <- predict_logit(dmso_conc, 0.94, vit_dmso_slope)
+vit_dmso_lost
+#saveRDS(vit_dmso_lost, "../data/vitality_DMSO_lost.rds")
+```
+
+This is the lost in vitality that the model predicts. Despite being significant at $\alpha$ = 5%, its effect is rather small because for 2% DMSO, we loose just a little bit more than 3%, with an upper bound of the 95%CI (most pessimistic value) of less than 6%.
+
+## Ethanol
+
+```{r}
+vit_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "vitality_EtOH")
+vit_etoh$donor <- as.factor(vit_etoh$donor)
+names(vit_etoh) <- c("donor", "conc", "live", "total")
+vit_etoh$live_frac <- vit_etoh$live / vit_etoh$total
+skimr::skim(vit_etoh)
+```
+
+There are also the same five donors, no missing data.
+
+```{r}
+table(vit_etoh$donor, as.factor(vit_etoh$conc))
+```
+
+The data are balanced with one observation for each concentration and each donor and no missing data.
+
+```{r}
+vit_etoh_m1 <- glmer(cbind(live, total - live) ~ conc + (conc | donor),
+  data = vit_etoh, family = binomial(link = "logit"))
+summary(vit_etoh_m1)
+```
+
+The model is:
+
+`r equatiomatic::extract_eq(vit_etoh_m1)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = vit_etoh) +
+  geom_jitter(aes(x = conc, y = live_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(vit_etoh_m1) * 100, col = donor)) +
+  labs(x = "[ethanol] (%)", y = "Live sperm (%)")
+```
+
+Generally, slopes seem rather close to zero, suggesting no or negligible effect of the concentration in ethanol up to 2%. Data are rather widespread. Let's check if the model can be simplified is a similar way as for DMSO using a likelihood ratio test:
+
+```{r}
+vit_etoh_m2 <- glmer(cbind(live, total - live) ~ conc  + (1 | donor),
+  data = vit_etoh, family = binomial(link = "logit"))
+anova(vit_etoh_m1, vit_etoh_m2, refit = FALSE) # Despite the name, it is indeed a LR test
+```
+
+The likelihood ratio test does not detects significant differences between the full and simplified models at $\alpha$ = 5%. We could thus use the simplest `vit_etoh_m2` model with only a shift in the slope per donor. This model is:
+
+`r equatiomatic::extract_eq(vit_etoh_m2)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = vit_etoh) +
+  geom_jitter(aes(x = conc, y = live_frac * 100, col = donor),
+    width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(vit_etoh_m2) * 100, col = donor)) +
+  labs(x = "[etoh] (%)", y = "Live sperm (%)")
+```
+
+```{r}
+summary(vit_etoh_m2)
+```
+
+The Z test indicates that `conc` is not significantly different from zero at $\alpha$ = 5%. However, it is not the best test in the case of a mixed model like here. We prefer to rely on the 95% confidence interval calculated either on the profile, or via parametric bootstrap (and especially the later one):
+
+```{r}
+confint(vit_etoh_m2, level = 0.95) # 95% CI based on profile
+set.seed(74588)
+# 1000x parameter bootstrap
+(vit_etoh_m2_conf <- confint(vit_etoh_m2, level = 0.95, method = "boot", nsim  = 1000L))
+```
+
+30 fits on bootstrapped data had singularities and one failed to converge. However, 95%CI from profiles and from parametric bootstraps are close. So, we can trust them. They indicate that the slope for `conc` is not significantly different from zero at $\alpha$ = 5%. He, we detect no significant effect of ethanol up to 2% on the spermatozoa vitality.
+
+### Additional verifications
+
+We could double-check the significance of the slope `conc` by looking at a likelihood ratio test when dropping `conc` from the model:
+
+```{r}
+#drop1(vit_etoh_m2, scope = "conc")
+vit_etoh_m3 <- glmer(cbind(live, total - live) ~ 1 + (1 | donor),
+  data = vit_etoh, family = binomial(link = "logit"))
+anova(vit_etoh_m2, vit_etoh_m3, refit = TRUE)
+```
+
+The model with `conc` is not significantly different at $\alpha$ level 5% from a reference model that sets the slope `conc` = 0. This is in accordance with the results we observed using 95%CIs.
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(vit_etoh_m2)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+vit_etoh_m2_all <- allFit(vit_etoh_m2)
+summary(vit_etoh_m2_all)
+```
+
+### Analysis of the residuals
+
+Let's check how the residuals distribute and if there is homoscedasticity.
+
+```{r}
+vit_etoh <- fortify.merMod(vit_etoh_m2)
+ggplot(data = vit_etoh, aes(x = .fitted, y = .scresid, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+There is one extreme value, but otherwise, residuals seem rather correctly distributed. Linearity is good here.
+
+```{r}
+ggplot(data = vit_etoh, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity of the residuals seems here acceptable (the blue curve that is a loess smoothing in the data is relatively horizontal).
+
+With the same remark as for DMSO, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = vit_etoh, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(c = "Theoretical quantiles", "Pearson's residuals")
+```
+
+It appears not too bad, except for two lower points. A Shapiro-Wilk test indicates non Normality (probably dues to the two extreme values):
+
+```{r}
+shapiro.test(vit_etoh$.scresid)
+```
+
+## General informations
+
+```{r}
+sessionInfo()
+```

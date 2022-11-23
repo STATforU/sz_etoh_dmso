@@ -1,0 +1,365 @@
+---
+title: "Capacitation"
+author: "Marie Bisconti, Philippe Grosjean & Elise Hennebert"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+The effect of DMSO and ethanol is evaluated at concentrations from 0 up to 2% on spermatozoa capacitation (i.e., phosphotyrosines).
+
+```{r setup, include=FALSE}
+library(lme4)
+library(lmerTest)
+library(ggplot2)
+theme_set(theme_bw())
+# Also using readxl, skimr, equatiomatic, optimix, dfoptim, boot
+# Read functions for residual analysis plots
+```
+
+## DMSO
+
+```{r}
+cap_dmso <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "capacitation_DMSO")
+cap_dmso$donor <- as.factor(cap_dmso$donor)
+names(cap_dmso) <- c("donor", "conc", "capa")
+skimr::skim(cap_dmso)
+```
+
+There are five donors, no missing data.
+
+```{r}
+table(cap_dmso$donor, as.factor(cap_dmso$conc))
+```
+
+The data are balanced with one observation for each concentration and each donor and no missing data.
+
+```{r}
+cap_dmso_m1 <- lmer(capa ~ conc + (conc | donor), data = cap_dmso)
+summary(cap_dmso_m1)
+```
+
+The fit is singular, due to a parameter evaluated at the boundary (correlation parameter between `conc` and `donor` is one in the random effect). The model is:
+
+`r equatiomatic::extract_eq(cap_dmso_m1)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = cap_dmso) +
+  geom_jitter(aes(x = conc, y = capa, col = donor), width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(cap_dmso_m1), col = donor)) +
+  labs(x = "[DMSO] (%)", y = "Capacitation")
+```
+
+Slopes are all negative, suggesting a negative concentration effect. Data are rather widespread. Lines are rather parallel, and a simplification of the model should also deal with the singularity (only different intercepts for `donor`). Let's check it with a likelihood ratio test:
+
+```{r}
+ranova(cap_dmso_m1, reduce.terms = TRUE)
+```
+
+or (this is the same):
+
+```{r}
+cap_dmso_m2 <- lmer(capa ~ conc + (1 | donor), data = cap_dmso)
+anova(cap_dmso_m1, cap_dmso_m2, refit = FALSE) # Despite the name, it is indeed a LR test
+```
+
+The likelihood ratio test (models *not* refitted using ML, not necessary because fixed effects are the same between the two models) does not detect significant differences between the full and simplified random effect term at $\alpha$ = 5%. We could thus use the simplest `cap_dmso_m2` model with only a shift in the slope per donor. This model is:
+
+`r equatiomatic::extract_eq(cap_dmso_m2)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = cap_dmso) +
+  geom_jitter(aes(x = conc, y = capa, col = donor), width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(cap_dmso_m2), col = donor)) +
+  labs(x = "[DMSO] (%)", y = "Capacitation")
+```
+
+Here is a summary of the final model:
+
+```{r}
+summary(cap_dmso_m2)
+```
+
+The t test indicates that `conc` is significantly different from zero at $\alpha$ = 5%, but not at $\alpha$ = 1%. Yet, t test is not the best one in the case of a mixed model like here. We prefer to rely on the 95% confidence interval calculated either on the profile, or via parametric bootstrap (and especially the later one):
+
+```{r}
+confint(cap_dmso_m2, level = 0.95) # 95% CI based on profile
+set.seed(52)
+# 1000x parameter bootstrap
+(cap_dmso_m2_conf <- confint(cap_dmso_m2, level = 0.95, method = "boot", nsim  = 1000L))
+```
+
+About 1/5 of the bootstrapped models were singular. However, the 95%ICs calculated from profiles and using bootstrap do not differ much. So, we could trust these results. The slope `conc` significantly different to zero at $\alpha$ = 5% because the 95% CIs do not contain zero (but it is very close to it at its minimum boundary).
+
+### Additional verifications
+
+We could double-check the significance of the slope `conc` by looking at a likelihood ratio test when dropping `conc` from the model:
+
+```{r}
+drop.scope(terms(cap_dmso_m2))
+drop1(cap_dmso_m2, scope = "conc")
+```
+
+or:
+
+```{r}
+cap_dmso_m3 <- lmer(capa ~ 1 + (1 | donor), data = cap_dmso)
+anova(cap_dmso_m2, cap_dmso_m3, refit = TRUE)
+```
+
+The model with a non zero slope is significantly different at $\alpha$ level 5% from a reference model using horizontal lines. There is thus a significant effect of DMSO concentration (confirmation of results obtained from 95% CI).
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(cap_dmso_m2)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+cap_dmso_m2_all <- allFit(cap_dmso_m2)
+summary(cap_dmso_m2_all)
+```
+
+### Analysis of the residuals
+
+Let's check how the residuals distribute and if there is homoscedasticity.
+
+```{r}
+cap_dmso <- fortify.merMod(cap_dmso_m2)
+ggplot(data = cap_dmso, aes(x = .fitted, y = .scresid, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+Residuals seem rather correctly distributed. Linearity is good here.
+
+```{r}
+ggplot(data = cap_dmso, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity of the residuals does not seem to be matched here, but on a closer look, the lower variance for fitted values \< 0.7 is due to having only two points in this area. So, we cannot conclude against homoscedasticity, since without these two points, the rest is OK. The amount of data is a little scarce here.
+
+Note: according to Gauss-Markov theorem that indicates that linearity, random sample, non-collinearity between predictors, non-correlation between predictors and error term and homoscedasticity are the only requirements for our GLMM, we do not have to check it. Also the model is robust to departure of Normality, and none of the tests we made depend on a Normal distribution of the residuals (we said we don't trust z/t tests and replace them by likelihood ratio tests and parameterized bootstrapped confidence intervals). However, for completeness, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = cap_dmso, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(x = "Theoretical quantiles", y = "Pearson's residuals")
+```
+
+It appears not that bad. A Shapiro-Wilk test is not against Normality either:
+
+```{r}
+shapiro.test(cap_dmso$.scresid)
+```
+
+## Predictions
+
+The model allows to calculate the drop in capacitation according to DMSO concentration from 0 to 2%.
+
+```{r}
+cap_dmso_slope <- c(
+  ci95_min   = min(cap_dmso_m2_conf["conc", ]),
+  estimate = fixef(cap_dmso_m2)[["conc"]],
+  ci95_max  = max(cap_dmso_m2_conf["conc", ]))
+cap_dmso_slope
+#saveRDS(cap_dmso_slope, "../data/capacitation_DMSO_slope.rds")
+```
+
+Let's say we want to calculate the drop in total mobility for various DMSO concentrations between 0 and 2% if the total mobility of a sample without DMSO is 80%. The calculation is:
+
+```{r}
+predict_with_ci <- function(conc, intercept = 1, slopes) {
+  slopes_mat <- matrix(slopes, nrow = 1,
+    dimnames = list(NULL, names(slopes)))
+  data.frame(conc = conc, -intercept +
+      (intercept + conc %*% slopes_mat))
+}
+dmso_conc <- (0:20) / 10
+cap_dmso_lost <- predict_with_ci(dmso_conc, 1.1, cap_dmso_slope)
+cap_dmso_lost
+
+#saveRDS(cap_dmso_lost, "../data/capacitation_DMSO_lost.rds")
+```
+
+This is the lost in capacitation that the model predicts with 95%CIs.
+
+## Ethanol
+
+```{r}
+cap_etoh <- readxl::read_excel("../data/Table S2.xlsx",
+  sheet = "capacitation_EtOH")
+cap_etoh$donor <- as.factor(cap_etoh$donor)
+names(cap_etoh) <- c("donor", "conc", "capa")
+skimr::skim(cap_etoh)
+```
+
+There are five donors, no missing data.
+
+```{r}
+table(cap_etoh$donor, as.factor(cap_etoh$conc))
+```
+
+The data are balanced with one observation for each concentration and each donor and no missing data.
+
+```{r}
+cap_etoh_m1 <- lmer(capa ~ conc + (conc | donor), data = cap_etoh)
+summary(cap_etoh_m1)
+```
+
+The fit is singular and the model failed to converge. We now try with a simplified random term where only the intercept depends on donor, like for DMSO.
+
+```{r}
+cap_etoh_m2 <- lmer(capa ~ conc + (1 | donor), data = cap_etoh)
+summary(cap_etoh_m2)
+```
+
+The simplified model fits well. According to t test, the slope is (just) not significantly different to zero at $\alpha$ = 5%. This model is:
+
+`r equatiomatic::extract_eq(cap_etoh_m2)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = cap_etoh) +
+  geom_jitter(aes(x = conc, y = capa, col = donor), width = 0.01) +
+  geom_line(aes(x = conc, y = fitted(cap_etoh_m2), col = donor)) +
+  labs(x = "[Ethanol] (%)", y = "Capacitation")
+```
+
+Data are very widespread. Here, there seems to be less differences from one donor to the other. However, the random term `donor` in the model accounts for the repeated measures (same donor for different concentrations). Hence, this term *cannot* be dropped, even if it appears to be non siginificant. Otherwise, we will end up with a model that does not take correlation of observations for a the same donor into account and it would be a pseudo-replication error!
+
+To check if the slope for `conc`\`is different from zero, we prefer to rely on 95% confidence intervals, especially those calculated using parametric bootstrap:
+
+```{r}
+confint(cap_etoh_m2, level = 0.95) # 95% CI based on profile
+set.seed(874356)
+# 1000x parameter bootstrap
+(cap_etoh_m2_conf <- confint(cap_etoh_m2, level = 0.95,
+  method = "boot", nsim  = 1000L))
+```
+
+Here almost 1/2 of the bootstrapped samples led to singularity (probably because the slope `conc`\`was very close to zero). However, the 95CIs are still similar to those calculated from the profile of our original model that was correctly fitted. The slope `conc` appears to be significantly different from zero at $\alpha$ = 5% because the 95% CIs do not contain zero (but it is very, very close to it at its minimum boundary). In this case, we should redo the analysis with a larger set of data to confirm or inform the slope is different from zero. Anyway, one could analyze the upper boundary of the 95%CI to determine if the effect might be problematic here or not. If not, it is not necessary to further investigate.
+
+### Additional verifications
+
+We could double-check the significance of the slope `conc` by looking at a likelihood ratio test when dropping `conc` from the model:
+
+```{r}
+drop.scope(terms(cap_etoh_m2))
+drop1(cap_etoh_m2, scope = "conc")
+```
+
+or:
+
+```{r}
+cap_etoh_m3 <- lmer(capa ~ 1 + (1 | donor), data = cap_etoh)
+anova(cap_etoh_m2, cap_etoh_m3, refit = TRUE)
+```
+
+The model with a non zero slope is just significantly different at $\alpha$ level 5% from a reference model using horizontal lines. There is thus a significant effect of ethanol concentration (confirmation of results obtained from 95% CI).
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(cap_etoh_m2)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+cap_etoh_m2_all <- allFit(cap_etoh_m2)
+summary(cap_etoh_m2_all)
+```
+
+Only the nlminbwrap algorithm with default parameters was not able to fit the mode. For the other algorithms, the convergence towards the same solution suggests we got probably a global optimum.
+
+### Analysis of the residuals
+
+Let's check how the residuals distribute and if there is homoscedasticity.
+
+```{r}
+cap_etoh <- fortify.merMod(cap_etoh_m2)
+ggplot(data = cap_etoh, aes(x = .fitted, y = .scresid, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+Residuals seem rather correctly distributed. Linearity is good here.
+
+```{r}
+ggplot(data = cap_etoh, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity of the residuals does not seem too bad. The amount of data is a little scarce here for low fitted values \< 0.95.
+
+Note: according to Gauss-Markov theorem that indicates that linearity, random sample, non-collinearity between predictors, non-correlation between predictors and error term and homoscedasticity are the only requirements for our GLMM, we do not have to check it. Also the model is robust to departure of Normality, and none of the tests we made depend on a Normal distribution of the residuals (we said we don't trust z/t tests and replace them by likelihood ratio tests and parameterized bootstrapped confidence intervals). However, for completeness, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = cap_etoh, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(x = "Theoretical quantiles", y = "Peason's residuals")
+```
+
+It appears rather good. A Shapiro-Wilk test is not against Normality either:
+
+```{r}
+shapiro.test(cap_etoh$.scresid)
+```
+
+## Predictions
+
+The model allows to calculate the drop in capacitation according to ethanol concentration from 0 to 2%.
+
+```{r}
+cap_etoh_slope <- c(
+  ci95_min   = min(cap_etoh_m2_conf["conc", ]),
+  estimate = fixef(cap_etoh_m2)[["conc"]],
+  ci95_max  = max(cap_etoh_m2_conf["conc", ]))
+cap_etoh_slope
+#saveRDS(cap_etoh_slope, "../data/capacitation_ETOH_slope.rds")
+```
+
+Let's say we want to calculate the drop in total mobility for various ethanol concentrations between 0 and 2% if the capacitation of a sample without ethanol is 1.1. The calculation is:
+
+```{r}
+predict_with_ci <- function(conc, intercept = 1, slopes) {
+  slopes_mat <- matrix(slopes, nrow = 1,
+    dimnames = list(NULL, names(slopes)))
+  data.frame(conc = conc, -intercept +
+      (intercept + conc %*% slopes_mat))
+}
+etoh_conc <- (0:20) / 10
+cap_etoh_lost <- predict_with_ci(etoh_conc, 1.1, cap_etoh_slope)
+cap_etoh_lost
+
+#saveRDS(cap_etoh_lost, "../data/capacitation_ETOH_lost.rds")
+```
+
+This is the lost in capacitation that the model predicts with 95%CIs.
+
+## General informations
+
+```{r}
+sessionInfo()
+```

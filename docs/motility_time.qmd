@@ -1,0 +1,237 @@
+---
+title: "Total and progressive motility over time"
+author: "Marie Bisconti, Philippe Grosjean & Elise Hennebert"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+The effect of DMSO and ethanol is evaluated over time.
+
+```{r setup, include=FALSE}
+library(lme4)
+library(ggplot2)
+theme_set(theme_bw())
+# Also using readxl, skimr, equatiomatic, optimix, dfoptim, boot
+# Read functions for residual analysis plots
+```
+
+## Total motility
+
+Here we examine the effect of time on total motility without the addition of DMSO or ethanol.
+
+```{r}
+mtt_cont <- readxl::read_excel("../data/Table S3.xlsx", sheet = "total motility_control")
+mtt_cont$treat <- "control"
+mtt_dmso <- readxl::read_excel("../data/Table S3.xlsx", sheet = "total motility_2%DMSO")
+mtt_dmso$treat <- "DMSO 2%"
+mtt_etoh1 <- readxl::read_excel("../data/Table S3.xlsx", sheet = "total motility_1%EtOH")
+mtt_etoh1$treat <- "EtOH 1%"
+mtt_etoh2 <- readxl::read_excel("../data/Table S3.xlsx", sheet = "total motility_2%EtOH")
+mtt_etoh2$treat <- "EtOH 2%"
+mtt <- rbind(mtt_cont, mtt_dmso, mtt_etoh1, mtt_etoh2)
+mtt$donor <- as.factor(mtt$donor)
+mtt$treat <- as.factor(mtt$treat)
+names(mtt) <- c("donor", "time", "motile", "total", "treat")
+mtt$motile_frac <- mtt$motile / mtt$total
+skimr::skim(mtt)
+```
+
+There are four donors, four treatments and no missing data.
+
+```{r}
+table(mtt$donor, as.factor(mtt$time), mtt$treat)
+```
+
+The data are balanced with one observation for each treatment, each time and each donor and no missing data.
+
+```{r}
+mtt_m1 <- glmer(cbind(motile, total - motile) ~ treat * time + (treat | donor),
+  data = mtt, family = binomial(link = "logit"))
+summary(mtt_m1)
+```
+
+There is a singularity in the model fitting because the correlation between donor and time is close to -1. We should try to simplify it. The model is:
+
+`r equatiomatic::extract_eq(mtt_m1)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = mtt) +
+  geom_jitter(aes(x = time, y = motile_frac, shape = treat, col = donor), width = 0.01) +
+  geom_line(aes(x = time, y = fitted(mtt_m1), linetype = treat, col = donor)) +
+  labs(x = "Time (h)", y = "Total motility")
+```
+
+Here, we try to simplify the model so that singularity disappears. If we use `(1 | donor)`, we got this:
+
+```{r}
+mtt_m2 <- glmer(cbind(motile, total - motile) ~ treat * time + (1 | donor),
+  data = mtt, family = binomial(link = "logit"))
+anova(mtt_m1, mtt_m2) # Despite the name, it is indeed a LR test
+```
+
+The likelihood ratio test does not detects significant differences between the full and simplified models at $\alpha$ = 5%. We could thus use the simplest `mtt_m2` model with only a shift in the slope per donor. This model is:
+
+`r equatiomatic::extract_eq(mtt_m2)`
+
+Here is a plot of this model that forces the differences in total motility for samples at time = 0 to be the same for all treatments:
+
+```{r}
+ggplot(data = mtt) +
+  geom_jitter(aes(x = time, y = motile_frac, shape = treat, col = donor), width = 0.01) +
+  geom_line(aes(x = time, y = fitted(mtt_m2), linetype = treat, col = donor)) +
+  labs(x = "Time (h)", y = "Total motility")
+```
+
+```{r}
+summary(mtt_m2)
+```
+
+The Z test indicates that the slope for `time` and the difference of slope for DMSO and ethanol are not significantly different from zero at $\alpha$ = 5%. Intercept is significantly different for ethanol at $\alpha$ = 5%, but not for DMSO. However, it is not the best test in the case of a mixed model like here. We prefer to rely on the 95% confidence interval calculated either on the profile, or via parametric bootstrap (and especially the later one):
+
+```{r}
+confint(mtt_m2, level = 0.95) # 95% CI based on profile
+set.seed(1643)
+# 1000x parameter bootstrap
+(mtt_m2_conf <- confint(mtt_m2, level = 0.95, method = "boot", nsim  = 1000L))
+```
+
+All 95%ICs are not significantly different from zero at $\alpha$ = 5% (they contain zero), except for the standanrd deviation of the random term (donor, .sig01), the intercept and for the shift in intercept for ethanol. This means we cannot detect an effect of time, or a significantly different effect of time in presence of DMSO or ethanol. Keep in mind, however, that we have few data for such a complex model. Even if it is perfectly balanced, prediction power is probably rather low. On the other hand, drop of motility after 4h is only a few percents, even for DMSO.
+
+### Additional verifications
+
+We could double-check the significance of the difference in slope for `treat:time` by looking at a likelihood ratio test when dropping `conc` from the model:
+
+```{r}
+#drop1(mtt_m2, scope = "time")
+mtt_m3 <- glmer(cbind(motile, total - motile) ~ treat + time + (1 | donor),
+  data = mtt, family = binomial(link = "logit"))
+anova(mtt_m2, mtt_m3, refit = TRUE)
+```
+
+There is not significant difference between the two models at $\alpha$ level of 5%. This means that we do not detect significant differences in slopes between models.
+
+We also double-check convergence of the model by trying different optimisation engines (just to make sure). First, is there a singularity in the model?
+
+```{r}
+isSingular(mtt_m2)
+```
+
+... then, a report about the model convergence:
+
+```{r}
+mtt_m2_all <- allFit(mtt_m2)
+summary(mtt_m2_all)
+```
+
+The model failed to converge with the nmkbw algorithm, but otherwise, results are consistent between the other optimisation algorithms.
+
+### Analysis of the residuals
+
+Let's check how the residuals distribute and if there is homoscedasticity.
+
+```{r}
+mtt <- fortify.merMod(mtt_m2)
+ggplot(data = mtt, aes(x = .fitted, y = .scresid, shape = treat, col = donor)) +
+  geom_point() +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "Pearson's residuals")
+```
+
+There is good.
+
+```{r}
+ggplot(data = mtt, aes(x = .fitted, y = sqrt(abs(.scresid)))) +
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  geom_hline(yintercept = 0) +
+  labs(x = "Fitted values", y = "(|Pearson's residuals|)^.5")
+```
+
+Homoscedasticity is checked here too.
+
+Note: according to Gauss-Markov theorem that indicates that linearity, random sample, non-collinearity between predictors, non-correlation between predictors and error term and homoscedasticity are the only requirements for our GLMM, we do not have to check it. Also the model is robust to departure of Normality, and none of the tests we made depend on a Normal distribution of the residuals (we said we don't trust z/t tests and replace them by likelihood ratio tests and parameterized bootstrapped confidence intervals). However, for completeness, here is the quantile-quantile plot of the residuals:
+
+```{r}
+ggplot(data = mtt, aes(sample = .scresid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(x = "Theoretical quantiles", y = "Pearson's residuals")
+```
+
+It appears not really good. A Shapiro-Wilk test also indicates no Normality of the residuals at $\alpha$ = 5%.
+
+```{r}
+shapiro.test(mtt$.scresid)
+```
+
+## Progressive motility
+
+Here we examine the effect of time on progressive motility without the addition of DMSO or ethanol.
+
+```{r}
+mpt_cont <- readxl::read_excel("../data/Table S3.xlsx", sheet = "progressive motility_control")
+mpt_cont$treat <- "control"
+mpt_dmso <- readxl::read_excel("../data/Table S3.xlsx", sheet = "progressive motility_2%DMSO")
+mpt_dmso$treat <- "DMSO 2%"
+mpt_etoh1 <- readxl::read_excel("../data/Table S3.xlsx", sheet = "progressive motility_1%EtOH")
+mpt_etoh1$treat <- "EtOH 1%"
+mpt_etoh2 <- readxl::read_excel("../data/Table S3.xlsx", sheet = "progressive motility_2%EtOH")
+mpt_etoh2$treat <- "EtOH 2%"
+mpt <- rbind(mpt_cont, mpt_dmso, mpt_etoh1, mpt_etoh2)
+mpt$donor <- as.factor(mpt$donor)
+mpt$treat <- as.factor(mpt$treat)
+names(mpt) <- c("donor", "time", "prog", "total", "treat")
+mpt$prog_frac <- mpt$prog / mpt$total
+skimr::skim(mpt)
+```
+
+There are four donors, four treatments and no missing data.
+
+```{r}
+table(mpt$donor, as.factor(mpt$time), mpt$treat)
+```
+
+The data are balanced with one observation for each treatment, each time and each donor and no missing data.
+
+```{r}
+mpt_m1 <- glmer(cbind(prog, total - prog) ~ treat * time + (treat | donor),
+  data = mpt, family = binomial(link = "logit"))
+summary(mpt_m1)
+```
+
+There is also a singularity in the model fitting here. The model is:
+
+`r equatiomatic::extract_eq(mpt_m1)`
+
+Here is a plot of this model:
+
+```{r}
+ggplot(data = mpt) +
+  geom_jitter(aes(x = time, y = prog_frac, shape = treat, col = donor), width = 0.01) +
+  geom_line(aes(x = time, y = fitted(mpt_m1), linetype = treat, col = donor)) +
+  labs(x = "Time (h)", y = "Progressive motility")
+```
+
+Here again, we simplify the model, so that the shift in intercept is the same for each treatment as for total motility, in order to eliminate the singularity.
+
+```{r}
+mpt_m2 <- glmer(cbind(prog, total - prog) ~ treat * time + (1 | donor),
+  data = mpt, family = binomial(link = "logit"))
+anova(mpt_m1, mpt_m2) # Despite the name, it is indeed a LR test
+```
+
+The likelihood ratio test detects significant differences between the full and simplified models at $\alpha$ = 5%. We cannot use the simplest `mpt_m2` model with only a shift in the slope per donor. Keep our complete model, we cannot do much with it, including the calculation of profile or parametric bootstrapped 95%CI on the parameters that do not proceed well.
+
+We could split into three separate models, one for control, one for DMSO, and one for ethanol. Yet, the difference in slopes between the three treatments is what we are looking for, and it is not possible to do it with three separate models.
+
+We need more data to fit such a model with three explanatory variables.
+
+## General informations
+
+```{r}
+sessionInfo()
+```
