@@ -351,8 +351,8 @@ Let's say we want to calculate the drop in total mobility for various ethanol co
 
 ```{r}
 predict_logit <- function(conc, intercept = 1, slopes) {
-  slopes_mat <- matrix(mt_etoh_slope, nrow = 1,
-    dimnames = list(NULL, names(mt_etoh_slope)))
+  slopes_mat <- matrix(slopes, nrow = 1,
+    dimnames = list(NULL, names(slopes)))
   data.frame(conc = conc, -intercept +
     boot::inv.logit(boot::logit(intercept) +
     conc %*% slopes_mat))

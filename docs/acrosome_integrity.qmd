@@ -284,8 +284,8 @@ set.seed(7431)
 We had 160 bootstrapped model with singularity among the 1000. Lower bound for the bootstrapped 95%CI is rather different to the one from profiles. This is not surprising since we have rather few data here. Slope for `conc` is not significantly different from zero at $\alpha$ = 5% because the 95% CI contains zero. However, it could be due to the scarcity of the data. Yet, the effect appears weak with a lost of a few percents for a concentration of 2% ethanol. We conclude here that the effect is either weak, or inexistent. Using upper bound 95%CI, we would have a variation of:
 
 ```{r}
-# Let's consider a value of 0.94 at conc = 0, with a slope of -0.31
-# we lose:
+# Let's consider a value of 0.94 at conc = 0, with a slope of -0.32
+# (most negative slope from C95%I), we lose:
 -0.94 + boot::inv.logit(boot::logit(0.94) - 0.32 * 2)
 ```
 
