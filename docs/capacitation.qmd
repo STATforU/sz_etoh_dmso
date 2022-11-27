@@ -180,7 +180,7 @@ cap_dmso_slope
 #saveRDS(cap_dmso_slope, "../data/capacitation_DMSO_slope.rds")
 ```
 
-Let's say we want to calculate the drop in total mobility for various DMSO concentrations between 0 and 2% if the total mobility of a sample without DMSO is 80%. The calculation is:
+Let's say we want to calculate the drop in capacitation for various DMSO concentrations between 0 and 2% if the capacitation of a sample without DMSO is 1.1. The calculation is:
 
 ```{r}
 predict_with_ci <- function(conc, intercept = 1, slopes) {
@@ -340,7 +340,7 @@ cap_etoh_slope
 #saveRDS(cap_etoh_slope, "../data/capacitation_ETOH_slope.rds")
 ```
 
-Let's say we want to calculate the drop in total mobility for various ethanol concentrations between 0 and 2% if the capacitation of a sample without ethanol is 1.1. The calculation is:
+Let's say we want to calculate the drop in capacitation for various ethanol concentrations between 0 and 2% if the capacitation of a sample without ethanol is 1.1. The calculation is:
 
 ```{r}
 predict_with_ci <- function(conc, intercept = 1, slopes) {

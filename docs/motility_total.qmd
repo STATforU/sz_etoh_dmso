@@ -163,7 +163,7 @@ shapiro.test(mt_dmso$.scresid)
 
 ## Predictions
 
-The model allows to calculate the drop in total mobility according to DMSO concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
+The model allows to calculate the drop in total motility according to DMSO concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
 
 ```{r}
 mt_dmso_slope <- c(
@@ -174,7 +174,7 @@ mt_dmso_slope
 #saveRDS(mt_dmso_slope, "../data/motility_total_DMSO_slope.rds")
 ```
 
-Let's say we want to calculate the drop in total mobility for various DMSO concentrations between 0 and 2% if the total mobility of a sample without DMSO is 80%. The calculation is:
+Let's say we want to calculate the drop in total motility for various DMSO concentrations between 0 and 2% if the total motility of a sample without DMSO is 80%. The calculation is:
 
 ```{r}
 predict_logit <- function(conc, intercept = 1, slopes) {
@@ -190,7 +190,7 @@ mt_dmso_lost
 #saveRDS(mt_dmso_lost, "../data/motility_total_DMSO_lost.rds")
 ```
 
-This is the lost in total mobility that the model predicts.
+This is the lost in total motility that the model predicts.
 
 ## Ethanol
 
@@ -336,7 +336,7 @@ shapiro.test(mt_etoh$.scresid)
 
 ### Predictions
 
-The model allows to calculate the drop in total mobility according to ethanol concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
+The model allows to calculate the drop in total motility according to ethanol concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
 
 ```{r}
 mt_etoh_slope <- c(
@@ -347,7 +347,7 @@ mt_etoh_slope
 #saveRDS(mt_etoh_slope, "../data/motility_total_ETOH_slope.rds")
 ```
 
-Let's say we want to calculate the drop in total mobility for various ethanol concentrations between 0 and 2% if the total mobility in a sample without ethanol is 80%. The calculation is:
+Let's say we want to calculate the drop in total motility for various ethanol concentrations between 0 and 2% if the total motility in a sample without ethanol is 80%. The calculation is:
 
 ```{r}
 predict_logit <- function(conc, intercept = 1, slopes) {
@@ -363,7 +363,7 @@ mt_etoh_lost
 #saveRDS(mt_etoh_lost, "../data/motility_total_ETOH_lost.rds")
 ```
 
-This is the lost in total mobility that the model predicts.
+This is the lost in total motility that the model predicts.
 
 ## General informations
 

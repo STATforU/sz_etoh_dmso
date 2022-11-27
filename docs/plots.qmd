@@ -163,8 +163,6 @@ mob_b <- ggplot(data = mp_etoh) +
   guides(colour = guide_legend(nrow = 1))
 ```
 
-### 
-
 ### Combined plots DMSO + ethanol
 
 ```{r, fig.width=7, fig.height=7}

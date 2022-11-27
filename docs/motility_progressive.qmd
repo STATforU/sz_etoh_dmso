@@ -162,7 +162,7 @@ shapiro.test(mp_dmso$.scresid)
 
 ## Predictions
 
-The model allows to calculate the drop in progressive mobility according to DMSO concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
+The model allows to calculate the drop in progressive motility according to DMSO concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
 
 ```{r}
 mp_dmso_slope <- c(
@@ -173,7 +173,7 @@ mp_dmso_slope
 #saveRDS(mp_dmso_slope, "../data/motility_prog_DMSO_slope.rds")
 ```
 
-Let's say we want to calculate the drop in progressive mobility for various DMSO concentrations between 0 and 2% if the progressive mobility of a sample without DMSO is 80%. The calculation is:
+Let's say we want to calculate the drop in progressive motility for various DMSO concentrations between 0 and 2% if the progressive motility of a sample without DMSO is 70%. The calculation is:
 
 ```{r}
 predict_logit <- function(conc, intercept = 1, slopes) {
@@ -184,12 +184,12 @@ predict_logit <- function(conc, intercept = 1, slopes) {
       conc %*% slopes_mat))
 }
 dmso_conc <- (0:20) / 10
-mp_dmso_lost <- predict_logit(dmso_conc, 0.8, mp_dmso_slope)
+mp_dmso_lost <- predict_logit(dmso_conc, 0.7, mp_dmso_slope)
 mp_dmso_lost
 #saveRDS(mp_dmso_lost, "../data/motility_prog_DMSO_lost.rds")
 ```
 
-This is the lost in progressive mobility that the model predicts.
+This is the lost in progressive motility that the model predicts.
 
 ## Ethanol
 
@@ -335,7 +335,7 @@ shapiro.test(mp_etoh$.scresid)
 
 ### Predictions
 
-The model allows to calculate the drop in progressive mobility according to ethanol concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
+The model allows to calculate the drop in progressive motility according to ethanol concentration from 0 to 2%. Note that an inverse logit transformation is required. Here is an example:
 
 ```{r}
 mp_etoh_slope <- c(
@@ -346,7 +346,7 @@ mp_etoh_slope
 #saveRDS(mp_etoh_slope, "../data/motility_prog_ETOH_slope.rds")
 ```
 
-Let's say we want to calculate the drop in progressive mobility for various ethanol concentrations between 0 and 2% if the progressive mobility in a sample without ethanol is 80%. The calculation is:
+Let's say we want to calculate the drop in progressive motility for various ethanol concentrations between 0 and 2% if the progressive motility in a sample without ethanol is 70%. The calculation is:
 
 ```{r}
 predict_logit <- function(conc, intercept = 1, slopes) {
@@ -357,12 +357,12 @@ predict_logit <- function(conc, intercept = 1, slopes) {
     conc %*% slopes_mat))
 }
 etoh_conc <- (0:20) / 10
-mp_etoh_lost <- predict_logit(etoh_conc, 0.8, mp_etoh_slope)
+mp_etoh_lost <- predict_logit(etoh_conc, 0.7, mp_etoh_slope)
 mp_etoh_lost
 #saveRDS(mp_etoh_lost, "../data/motility_prog_ETOH_lost.rds")
 ```
 
-This is the lost in progressive mobility that the model predicts.
+This is the lost in progressive motility that the model predicts.
 
 ## General informations
 
